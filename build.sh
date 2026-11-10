@@ -5,7 +5,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo /)"
-if [ ! -f "$HERE/make-ios.sh" ]; then
+if [ ! -f "$HERE/make-app.sh" ]; then
   HERE=/tmp/v4mac
   printf '\nDownloading V4Mac into %s\n' "$HERE"
   mkdir -p "$HERE"
@@ -14,7 +14,6 @@ if [ ! -f "$HERE/make-ios.sh" ]; then
 fi
 cd "$HERE"
 
-TOOLCHAIN=1.98.1
 OUT="$HOME/Downloads/V4MacOutput"
 SAVED=build/.choices
 
@@ -104,16 +103,13 @@ if ! xcodebuild -license check >/dev/null 2>&1; then
 fi
 xcodebuild -version | head -1
 
-pick "What do you want to build?" "V4Mac for this Mac" "V4Mac for iPhone / iPad"
-PLATFORM="$REPLY"
-
 bold "Checking Homebrew"
 if ! command -v brew >/dev/null; then
   [ -x /opt/homebrew/bin/brew ] || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 brew --version | head -1
-for tool in cmake:cmake $([ "$PLATFORM" = 2 ] && echo xcodegen:xcodegen wasm-opt:binaryen); do
+for tool in cmake:cmake; do
   command -v "${tool%%:*}" >/dev/null || { bold "Installing ${tool##*:}"; brew install "${tool##*:}"; }
 done
 
@@ -127,103 +123,14 @@ rustup toolchain list | grep '^stable' >/dev/null || rustup toolchain install st
 rustup default >/dev/null 2>&1 || rustup default stable
 cargo --version
 
-if [ "$PLATFORM" = 1 ]; then
-  bold "Downloading Rust dependencies"
-  cargo fetch --locked
-  bold "Building V4Mac (a few minutes the first time)"
-  run ./make-app.sh
-  mkdir -p "$OUT"
-  rm -rf "$OUT/V4Mac.app"
-  ditto build/V4Mac.app "$OUT/V4Mac.app"
-  bold "Done: $OUT/V4Mac.app"
-  echo "Showing it in Finder: open it, then import your game .zip."
-  open -R "$OUT/V4Mac.app"
-  exit 0
-fi
-
-bold "Preparing the iOS toolchain"
-rustup toolchain list | grep "^$TOOLCHAIN" >/dev/null || rustup toolchain install "$TOOLCHAIN" --profile minimal
-rustup target list --toolchain "$TOOLCHAIN" --installed | grep '^aarch64-apple-ios$' >/dev/null || rustup target add aarch64-apple-ios --toolchain "$TOOLCHAIN"
-if ! xcodebuild -showsdks 2>/dev/null | grep iphoneos >/dev/null; then
-  echo "Downloading the iOS platform for Xcode (a few GB):"
-  xcodebuild -downloadPlatform iOS
-fi
 bold "Downloading Rust dependencies"
 cargo fetch --locked
+bold "Building V4Mac (a few minutes the first time)"
+run ./make-app.sh
+mkdir -p "$OUT"
+rm -rf "$OUT/V4Mac.app"
+ditto build/V4Mac.app "$OUT/V4Mac.app"
+bold "Done: $OUT/V4Mac.app"
+echo "Showing it in Finder: open it, then import your game .zip."
+open -R "$OUT/V4Mac.app"
 
-LAST_ZIP=""
-[ -f "$SAVED" ] && . "$SAVED"
-game_zip "$LAST_ZIP" || LAST_ZIP=""
-
-bold "Your game data"
-echo "The .zip with data/ and b/<build>/game.wasm inside. Drag it into this window, then press Enter."
-while :; do
-  ask "Game .zip" "$LAST_ZIP"
-  ZIP="$(clean_path "$REPLY")"
-  if [ -z "$ZIP" ]; then echo "Drag your game .zip into this window, then press Enter."
-  elif [ ! -f "$ZIP" ]; then echo "No file at: $ZIP"
-  elif ! game_zip "$ZIP"; then echo "That .zip has no b/<build>/game.wasm inside."
-  else break
-  fi
-done
-remember
-
-pick "How do you want to install it?" \
-  "Make an .ipa (install it with AltStore)" \
-  "Install it on my iPhone / iPad now (plugged into this Mac)"
-OUTPUT="$REPLY"
-
-FREE=0
-TEAM="${TEAM:-}"
-if [ "$OUTPUT" = 2 ] && [ -z "$TEAM" ]; then
-  bold "Signing"
-  while :; do
-    TEAMS="$(xcode_teams)"
-    [ -n "$TEAMS" ] && break
-    echo "Xcode needs your Apple ID to sign the app (a free one works)."
-    echo "Opening Xcode: go to Settings > Accounts, click +, choose Apple ID and sign in."
-    open -a Xcode
-    read -r -p "Press Enter once you're signed in. " _ || exit 1
-  done
-  if [ "$(printf '%s\n' "$TEAMS" | wc -l)" -gt 1 ]; then
-    NAMES=()
-    while IFS=$'\t' read -r _ free name; do
-      NAMES+=("$name$([ "$free" = 1 ] && echo " (free)")")
-    done <<< "$TEAMS"
-    pick "Which account should sign V4Mac?" "${NAMES[@]}"
-    LINE="$(printf '%s\n' "$TEAMS" | sed -n "${REPLY}p")"
-  else
-    LINE="$TEAMS"
-  fi
-  TEAM="$(printf '%s' "$LINE" | cut -f1)"
-  FREE="$(printf '%s' "$LINE" | cut -f2)"
-  echo "Signing with $(printf '%s' "$LINE" | cut -f3)$([ "$FREE" = 1 ] && echo "'s free account" || echo "'s developer account")."
-fi
-
-BUNDLE="${BUNDLE_ID:-com.$(id -un | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]').v4mac}"
-
-FREE_KB="$(df -k . | awk 'NR==2 {print $4}')"
-[ "$FREE_KB" -gt $((15 * 1024 * 1024)) ] || echo "Warning: less than 15 GB free on this disk, the build may run out of space."
-
-if [ "$OUTPUT" = 2 ]; then
-  while ! xcrun devicectl list devices 2>/dev/null | grep -E 'iPhone|iPad' | grep -E 'available \(paired\)|connected' >/dev/null; do
-    echo
-    echo "No iPhone / iPad found. Plug it in with a cable, unlock it, tap Trust,"
-    echo "and turn on Settings > Privacy & Security > Developer Mode."
-    read -r -p "Press Enter to look again. " _ || exit 1
-  done
-fi
-
-bold "Building V4Mac for iOS (10-30 minutes the first time)"
-if [ "$OUTPUT" = 1 ]; then
-  BUNDLE_ID="$BUNDLE" run ./make-ios.sh "$ZIP" --ipa
-  mkdir -p "$OUT"
-  cp build/V4Mac.ipa "$OUT/V4Mac.ipa"
-  bold "Done: $OUT/V4Mac.ipa"
-  echo "Showing it in Finder: open it with AltStore."
-  open -R "$OUT/V4Mac.ipa"
-else
-  TEAM="$TEAM" BUNDLE_ID="$BUNDLE" FREE="$FREE" run ./make-ios.sh "$ZIP" --install
-  bold "Done: V4Mac is on your device"
-  echo "If it says \"Untrusted Developer\": Settings > General > VPN & Device Management, tap your account, Trust."
-fi

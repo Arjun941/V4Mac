@@ -1,6 +1,5 @@
 /target
 /build
-/ios/*.xcodeproj
 xcuserdata/
 DerivedData/
 *.xcworkspace

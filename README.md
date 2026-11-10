@@ -5,7 +5,7 @@
 <h1 align="center">V4Mac</h1>
 
 <p align="center">
-A native macOS (and iOS) build of the GTA V web port, with a custom launcher, an in-game mod menu with a car spawner, and external mod folder support.<br>
+A native macOS build of the GTA V web port, with a custom launcher, an in-game mod menu with a car spawner, and external mod folder support.<br>
 <sub>A fork of <a href="https://github.com/c22dev/muguet">Muguet</a> by c22dev, extended by OffSpace.</sub>
 </p>
 
@@ -36,7 +36,7 @@ All of that work is Muguet's. V4Mac builds on top of it and adds the features be
 
 ### Inherited from Muguet
 
-- Native Mach-O macOS and iOS app that runs the web build's `game.wasm` through wasmtime, with wgpu on Metal.
+- Native Mach-O macOS app that runs the web build's `game.wasm` through wasmtime, with wgpu on Metal.
 - Small UDP multiplayer: one player hosts, the others join by address (UDP port 47520).
 - ASTC textures, native Opus audio, gamepad support, graphics presets, and your own saves can be imported.
 
@@ -47,7 +47,6 @@ All of that work is Muguet's. V4Mac builds on top of it and adds the features be
 - Rust toolchain and `cmake` (the install script sets these up for you)
 - A copy of the game files (see below)
 
-For iOS you also need `rustup` with toolchain `1.98.1` and the `aarch64-apple-ios` target, `xcodegen`, an Apple developer account (a free one works) and a device on iOS 15 or later, ideally with 8 GB of RAM.
 
 ## Game files
 
@@ -55,7 +54,19 @@ You supply your own copy as a `.zip`: the folder that holds `data/` and `b/<buil
 
 ## Installation
 
-### The easy way (macOS)
+### Prebuilt release (quickest)
+
+1. Download `V4Mac-macOS-arm64.zip` from the [latest release](https://github.com/Arjun941/V4Mac/releases/latest) and unzip it.
+2. Drag `V4Mac.app` into `/Applications`.
+3. The app is ad-hoc signed, not notarized, so macOS will block it the first time. Either right-click the app, choose **Open** and confirm, or run:
+
+```bash
+xattr -cr /Applications/V4Mac.app
+```
+
+Then follow [First launch](#first-launch). The release contains no game files.
+
+### Build it yourself: the easy way
 
 Paste this into Terminal:
 
@@ -63,11 +74,11 @@ Paste this into Terminal:
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Arjun941/V4Mac/v4mac/build.sh)"
 ```
 
-It downloads V4Mac into `/tmp/v4mac`, installs what's missing (Homebrew, Rust and so on), asks whether you want the Mac or iOS version, and walks you through the rest. The finished `.app` ends up in `~/Downloads/V4MacOutput`.
+It downloads V4Mac into `/tmp/v4mac`, installs what's missing (Homebrew, Rust and so on), and walks you through the rest. The finished `.app` ends up in `~/Downloads/V4MacOutput`.
 
 Then drag `V4Mac.app` into `/Applications`.
 
-### From a clone
+### Build it yourself: from a clone
 
 ```bash
 git clone https://github.com/Arjun941/V4Mac.git
@@ -86,14 +97,6 @@ If `cargo` isn't found, put rustup on your PATH first. On Homebrew that is `expo
 2. Pick your game `.zip` when asked. It is imported to `~/Library/Application Support/V4Mac/game`.
 3. The first launch compiles the game code to native code, which takes a few minutes. Later launches are fast.
 4. Set your options in the launcher (resolution, FPS limit, fullscreen, Mod Menu on or off and so on) and press **Play**.
-
-### iOS
-
-```bash
-TEAM=<your team id> ./make-ios.sh game.zip --install
-```
-
-`--ipa` produces `build/V4Mac.ipa` instead. With a free account add `FREE=1` and a `BUNDLE_ID` of your own. Install with AltStore. Sideloadly and SideStore are reported to have problems. A paid developer account also works. The iOS build has not been tested in V4Mac, and the mod menu and mods overlay were written against the macOS build.
 
 ## Using the mod menu
 
@@ -136,14 +139,14 @@ On first launch V4Mac moves `~/Library/Application Support/Muguet` to `~/Library
 | --- | --- |
 | `src/` | Rust source (runtime, GPU, audio, input, multiplayer). `menu.rs` is the V4Mac mod menu. `io.rs` holds the mods overlay. |
 | `launcher/Launcher.swift` | The macOS launcher (SwiftUI) |
-| `make-app.sh`, `make-ios.sh`, `build.sh` | Build scripts |
+| `make-app.sh`, `build.sh` | Build scripts |
 | `assets/` | Original V4Mac logo, icon and launcher artwork |
 
 Internal identifiers such as the `MUGUET_*` environment variables and the `muguet_*` host function names are unchanged on purpose, to stay compatible with upstream and to keep merges easy.
 
 ## Credits
 
-- **[Muguet](https://github.com/c22dev/muguet) by [Constantin Clerc (c22dev)](https://github.com/c22dev)**. This project is a fork of it, and the port itself (wasmtime and wgpu runtime, native macOS and iOS app, multiplayer) is his work.
+- **[Muguet](https://github.com/c22dev/muguet) by [Constantin Clerc (c22dev)](https://github.com/c22dev)**. This project is a fork of it, and the port itself (wasmtime and wgpu runtime, native macOS app, multiplayer) is his work.
 - **OffSpace**: V4Mac's mod menu, car spawner, mods overlay, launcher redesign and branding.
 - Muguet's contributors, whose work is included here:
   - [divyanshugarg36](https://github.com/divyanshugarg36) for lots of iOS fixes and improvements
