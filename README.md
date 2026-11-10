@@ -33,7 +33,6 @@ All of that work is Muguet's. V4Mac builds on top of it and adds the features be
 - **External mod support**: drop files into `~/Library/Application Support/V4Mac/mods/<ModName>/…` and they are overlaid on the game's file tree at startup. See [Mods](#mods).
 - **Redesigned launcher** with a V4Mac logo, an artwork background, a larger window, a Mod Menu toggle and the full settings panel visible at once.
 - **Original branding**: the logo, icon and launcher artwork are drawn from scratch for V4Mac. They contain no Rockstar or Take-Two artwork.
-- **Rename and tidy-up**: the package and binaries are now `v4mac` and `v4mac-server`, the app is `V4Mac.app`, and the data folder is `~/Library/Application Support/V4Mac` (see [Upgrading from Muguet](#upgrading-from-muguet)).
 
 ### Inherited from Muguet
 
