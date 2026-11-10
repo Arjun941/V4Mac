@@ -1,4 +1,4 @@
-// muguet - muguet-server.rs
+// muguet - v4mac-server.rs
 // Constantin Clerc (c22dev) - 0.1
 
 #[path = "../proto.rs"]

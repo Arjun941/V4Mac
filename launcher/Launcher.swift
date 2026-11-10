@@ -5,10 +5,20 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-let supportURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Muguet")
+let supportURL: URL = {
+    let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+    let new = base.appendingPathComponent("V4Mac"), old = base.appendingPathComponent("Muguet")
+    // Carry an existing install over from the pre-rename "Muguet" folder.
+    if !FileManager.default.fileExists(atPath: new.path), FileManager.default.fileExists(atPath: old.path) {
+        if (try? FileManager.default.moveItem(at: old, to: new)) != nil {
+            try? FileManager.default.createSymbolicLink(at: old, withDestinationURL: new) // keep older builds working
+        }
+    }
+    return new
+}()
 let configURL = supportURL.appendingPathComponent("config.json")
 let gameURL = supportURL.appendingPathComponent("game")
-let gameBinary = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/muguet")
+let gameBinary = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/v4mac")
 
 let savesRoot = supportURL.appendingPathComponent("saves")
 let defaultTitle = "GTA V"
@@ -24,7 +34,7 @@ func gameReady() -> Bool {
     let fm = FileManager.default
     guard fm.fileExists(atPath: gameURL.appendingPathComponent("data/manifest.json").path),
           let builds = try? fm.contentsOfDirectory(at: gameURL.appendingPathComponent("b"), includingPropertiesForKeys: nil) else { return false }
-    let embedded = Bundle.main.object(forInfoDictionaryKey: "MuguetEmbeddedCode") as? Bool ?? false
+    let embedded = Bundle.main.object(forInfoDictionaryKey: "V4MacEmbeddedCode") as? Bool ?? false
     return builds.contains { (embedded || fm.fileExists(atPath: $0.appendingPathComponent("game.wasm").path)) && fm.fileExists(atPath: $0.appendingPathComponent("shaders/index.json").path) }
 }
 
@@ -101,7 +111,7 @@ final class Compiler: ObservableObject {
                     UserDefaults.standard.set(Date().timeIntervalSince(s), forKey: "compileSeconds")
                 }
                 self.started = nil
-                if p.terminationStatus == 0 { done() } else { self.error = "Compiling the game failed (see ~/Library/Logs/Muguet.log)" }
+                if p.terminationStatus == 0 { done() } else { self.error = "Compiling the game failed (see ~/Library/Logs/V4Mac.log)" }
             }
         }
         do { try p.run() } catch { self.error = "Could not compile the game: \(error.localizedDescription)" }
@@ -204,6 +214,69 @@ final class SaveImporter: ObservableObject {
     }
 }
 
+
+let gtaGreen = Color(red: 0.36, green: 0.69, blue: 0.30)
+
+/// Los Santos sunset: sky, sun, skyline and palms drawn in code. To use your own picture instead,
+/// save it as ~/Library/Application Support/V4Mac/launcher-background.jpg (or .png).
+struct LosSantosBackdrop: View {
+    static let custom: NSImage? = Bundle.main.url(forResource: "launcher-bg", withExtension: "jpg").flatMap { NSImage(contentsOf: $0) } ?? ["jpg", "png"].lazy.compactMap { NSImage(contentsOf: supportURL.appendingPathComponent("launcher-background.\($0)")) }.first
+
+    var body: some View {
+        if let img = Self.custom {
+            Image(nsImage: img).resizable().scaledToFill().frame(width: 1080, height: 690, alignment: .trailing).clipped()
+        } else {
+            Canvas { ctx, size in
+                let w = size.width, h = size.height
+                let sky = Gradient(stops: [
+                    .init(color: Color(red: 0.10, green: 0.07, blue: 0.25), location: 0),
+                    .init(color: Color(red: 0.55, green: 0.17, blue: 0.42), location: 0.38),
+                    .init(color: Color(red: 0.98, green: 0.45, blue: 0.25), location: 0.66),
+                    .init(color: Color(red: 1.0, green: 0.78, blue: 0.40), location: 0.86)])
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(sky, startPoint: .zero, endPoint: CGPoint(x: 0, y: h)))
+                let sun = CGRect(x: w * 0.62 - 70, y: h * 0.62 - 70, width: 140, height: 140)
+                ctx.fill(Path(ellipseIn: sun.insetBy(dx: -50, dy: -50)), with: .color(Color(red: 1, green: 0.7, blue: 0.4).opacity(0.18)))
+                ctx.fill(Path(ellipseIn: sun.insetBy(dx: -22, dy: -22)), with: .color(Color(red: 1, green: 0.75, blue: 0.45).opacity(0.28)))
+                ctx.fill(Path(ellipseIn: sun), with: .color(Color(red: 1, green: 0.93, blue: 0.7)))
+                var seed: UInt64 = 7
+                func rnd() -> CGFloat { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return CGFloat((seed >> 33) % 1000) / 1000 }
+                func skyline(base: CGFloat, minH: CGFloat, maxH: CGFloat, color: Color) {
+                    var x: CGFloat = -10
+                    while x < w {
+                        let bw = 14 + rnd() * 28, bh = minH + rnd() * (maxH - minH)
+                        ctx.fill(Path(CGRect(x: x, y: base - bh, width: bw, height: bh + 200)), with: .color(color))
+                        x += bw + rnd() * 3
+                    }
+                }
+                skyline(base: h * 0.86, minH: 28, maxH: 80, color: Color(red: 0.30, green: 0.12, blue: 0.30))
+                skyline(base: h * 0.92, minH: 30, maxH: 110, color: Color(red: 0.16, green: 0.07, blue: 0.20))
+                // Maze Bank style tower
+                let tx = w * 0.30
+                ctx.fill(Path(CGRect(x: tx, y: h * 0.40, width: 30, height: h)), with: .color(Color(red: 0.12, green: 0.05, blue: 0.16)))
+                ctx.fill(Path(CGRect(x: tx + 13, y: h * 0.40 - 22, width: 4, height: 22)), with: .color(Color(red: 0.12, green: 0.05, blue: 0.16)))
+                // palms
+                func palm(_ x: CGFloat, _ height: CGFloat, lean: CGFloat) {
+                    let base = CGPoint(x: x, y: h), top = CGPoint(x: x + lean, y: h - height)
+                    var trunk = Path(); trunk.move(to: base)
+                    trunk.addQuadCurve(to: top, control: CGPoint(x: x + lean * 0.1, y: h - height * 0.55))
+                    ctx.stroke(trunk, with: .color(.black), lineWidth: 5)
+                    for k in 0..<9 {
+                        let a = Double(k) / 9 * .pi * 2 + 0.3, len: CGFloat = 52
+                        var f = Path(); f.move(to: top)
+                        let end = CGPoint(x: top.x + cos(a) * len, y: top.y + sin(a) * len * 0.55 + 14)
+                        f.addQuadCurve(to: end, control: CGPoint(x: top.x + cos(a) * len * 0.6, y: top.y + sin(a) * len * 0.5 - 16))
+                        ctx.stroke(f, with: .color(.black), lineWidth: 3)
+                    }
+                }
+                palm(w * 0.06, 230, lean: 26)
+                palm(w * 0.16, 170, lean: 14)
+                palm(w * 0.90, 250, lean: -28)
+                palm(w * 0.80, 180, lean: -12)
+            }
+        }
+    }
+}
+
 final class Settings: ObservableObject {
     @Published var preset = Preset.balanced
     @Published var mode = 2
@@ -213,6 +286,7 @@ final class Settings: ObservableObject {
     @Published var fps = 60
     @Published var mouse = 2.0
     @Published var mute = false
+    @Published var modMenu = true
     @Published var multiplayer = false
     @Published var host = true
     @Published var server = ""
@@ -232,6 +306,7 @@ final class Settings: ObservableObject {
         if let v = json["fps_limit"] as? Int { fps = v }
         if let v = json["mouse_sensitivity"] as? Double { mouse = v }
         if let v = json["mute"] as? Bool { mute = v }
+        if let v = json["mod_menu"] as? Bool { modMenu = v }
         if let v = json["multiplayer"] as? Bool { multiplayer = v }
         if let v = json["host"] as? Bool { host = v }
         if let v = json["server"] as? String { server = v }
@@ -249,6 +324,7 @@ final class Settings: ObservableObject {
         json["fps_limit"] = fps
         json["mouse_sensitivity"] = (mouse * 10).rounded() / 10
         json["mute"] = mute
+        json["mod_menu"] = modMenu
         json["multiplayer"] = multiplayer
         json["host"] = host
         json["server"] = server.trimmingCharacters(in: .whitespaces)
@@ -260,131 +336,230 @@ final class Settings: ObservableObject {
     }
 }
 
+let accent = Color(red: 0.99, green: 0.69, blue: 0.09)
+let night = Color(red: 0.03, green: 0.03, blue: 0.04)
+let modsURL = supportURL.appendingPathComponent("mods")
+
+func display(_ size: CGFloat) -> Font { .custom("Futura-CondensedExtraBold", size: size) }
+
+extension View {
+    /// Flat dark panel with a thin edge: sharp, like the Rockstar launcher.
+    func glass(_ radius: CGFloat = 2) -> some View {
+        background(Rectangle().fill(Color.black.opacity(0.66)))
+            .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+    }
+}
+
+struct ModeCard: View {
+    let title: String, symbol: String, subtitle: String, selected: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Rectangle().fill(selected ? accent : .clear).frame(height: 3)
+                VStack(alignment: .leading, spacing: 4) {
+                    Image(systemName: symbol).font(.system(size: 16, weight: .bold)).foregroundStyle(selected ? accent : .white.opacity(0.55))
+                    Text(title.uppercased()).font(display(19)).tracking(1.5).foregroundStyle(selected ? .white : .white.opacity(0.7))
+                    Text(subtitle.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.45))
+                }
+                .padding(.horizontal, 14).padding(.bottom, 12).padding(.top, 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glass()
+            .overlay(Rectangle().stroke(selected ? accent : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct LauncherView: View {
     @StateObject private var s = Settings()
     @StateObject private var importer = Importer()
     @StateObject private var compiler = Compiler()
     @StateObject private var save = SaveImporter()
     @State private var error: String?
+    @State private var showMultiplayer = false
+    @State private var modCount = 0
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(height: 110)
-            if !importer.ready || importer.progress != nil {
-                importView
-            } else if let started = compiler.started {
-                compileView(started)
-            } else {
-                settingsView
+        ZStack(alignment: .leading) {
+            LosSantosBackdrop().frame(width: 1080, height: 690).clipped()
+            LinearGradient(stops: [.init(color: night.opacity(0.80), location: 0), .init(color: night.opacity(0.62), location: 0.30), .init(color: night.opacity(0.28), location: 0.55), .init(color: night.opacity(0.06), location: 0.80), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing)
+            LinearGradient(colors: [.clear, night.opacity(0.35)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                if !importer.ready || importer.progress != nil {
+                    importView
+                } else if let started = compiler.started {
+                    compileView(started)
+                } else {
+                    settingsView
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MADE BY OFFSPACE").font(.system(size: 9, weight: .bold)).tracking(1.5)
+                    Text("Based on Muguet by c22dev · github.com/c22dev/muguet").font(.system(size: 9))
+                    Text("Unofficial fan project · plays your own game files").font(.system(size: 9))
+                }
+                .foregroundStyle(.white.opacity(0.45))
             }
-            Text("proudly made by c22dev")
-                .font(.caption).foregroundStyle(.secondary)
+            .padding(.horizontal, 30).padding(.vertical, 22)
+            .frame(width: 450)
+            logoView
+            VStack { Spacer(); statusChips }.frame(maxWidth: .infinity, alignment: .trailing).padding(26)
         }
-        .padding(24)
-        .frame(width: 480)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 1080, height: 690)
+        .background(night)
+        .preferredColorScheme(.dark)
+        .tint(accent)
+        .onAppear { DispatchQueue.main.async { NSApp.windows.first { $0.isVisible }?.center() } }
+        .onAppear { modCount = ((try? FileManager.default.contentsOfDirectory(atPath: modsURL.path)) ?? []).filter { !$0.hasPrefix(".") && $0 != "README.txt" }.count }
+    }
+
+    var header: some View {
+        HStack(spacing: 10) {
+            Text("MACOS EDITION").font(display(13)).tracking(4).foregroundStyle(accent)
+            Rectangle().fill(.white.opacity(0.25)).frame(height: 1)
+        }
+        .padding(.top, 4)
+    }
+
+    /// The game logo, centred in the right half of the window.
+    var logoView: some View {
+        Group {
+            if let url = Bundle.main.url(forResource: "v4mac-logo", withExtension: "png"), let logo = NSImage(contentsOf: url) {
+                Image(nsImage: logo).resizable().scaledToFit().frame(height: 300)
+                    .shadow(color: .black.opacity(0.6), radius: 18, y: 6)
+            } else {
+                Text("GRAND THEFT AUTO V").font(display(40)).foregroundStyle(.white)
+            }
+        }
+        .frame(width: 540, height: 690)
+        .offset(x: 540)
+    }
+
+    var statusChips: some View {
+        HStack(spacing: 8) {
+            chip(importer.ready ? "checkmark.circle.fill" : "exclamationmark.triangle.fill", importer.ready ? "Game files ready" : "Game files missing", importer.ready ? accent : .orange)
+            Button {
+                try? FileManager.default.createDirectory(at: modsURL, withIntermediateDirectories: true)
+                NSWorkspace.shared.open(modsURL)
+            } label: { chip("folder.fill", modCount == 0 ? "Open mods folder" : "Mods: \(modCount) · open folder", .white) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    func chip(_ symbol: String, _ text: String, _ color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).foregroundStyle(color)
+            Text(text.uppercased()).font(.system(size: 10, weight: .bold)).tracking(1)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8).glass()
     }
 
     @ViewBuilder var importView: some View {
-        VStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ADD YOUR GAME").font(display(22)).tracking(2)
+            Text("Choose the .zip that holds your game's data/ and b/<build>/ folders.").font(.callout).foregroundStyle(.white.opacity(0.65))
             if let p = importer.progress {
-                ProgressView(value: p)
+                ProgressView(value: p).tint(accent)
                 Text("Importing… \(Int(p * 100)) %").font(.callout).monospacedDigit()
             } else {
-                Button("Import game data .zip") { importer.choose() }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                primaryButton("IMPORT GAME DATA") { importer.choose() }
             }
-            if let e = importer.error { Text(e).foregroundStyle(.red).font(.callout).multilineTextAlignment(.center) }
+            if let e = importer.error { Text(e).foregroundStyle(.red).font(.callout) }
         }
+        .padding(18).glass()
     }
 
     func compileView(_ started: Date) -> some View {
         TimelineView(.periodic(from: started, by: 0.5)) { t in
             let elapsed = t.date.timeIntervalSince(started)
-            VStack(spacing: 12) {
-                ProgressView(value: min(elapsed / compiler.expected, 0.95))
+            VStack(alignment: .leading, spacing: 12) {
+                Text("GETTING READY").font(display(22)).tracking(2)
+                ProgressView(value: min(elapsed / compiler.expected, 0.95)).tint(accent)
                 Text("Compiling the game for this Mac… \(Int(elapsed)) s").font(.callout).monospacedDigit()
-                Text("This should not take more than 60 seconds.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("First launch only, about a minute.").font(.caption).foregroundStyle(.white.opacity(0.55))
             }
+            .padding(18).glass()
         }
     }
 
+    func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(display(24)).tracking(5).foregroundStyle(.black)
+                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                .background(Rectangle().fill(accent))
+        }
+        .buttonStyle(.plain)
+    }
+
+    func row<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        HStack { Text(title.uppercased()).font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.85)); Spacer(); content() }
+            .padding(.horizontal, 14).padding(.vertical, 9)
+    }
+    var rule: some View { Rectangle().fill(.white.opacity(0.08)).frame(height: 1) }
+
     @ViewBuilder var settingsView: some View {
-        VStack(spacing: 18) {
-            Form {
-                Picker("Mode", selection: $s.mode) {
-                    Text("Story Mode").tag(1)
-                    Text("Sandbox").tag(2)
-                }
-                Picker("Graphics", selection: $s.preset) {
-                    ForEach(Preset.allCases, id: \.self) { p in Text(p.title).tag(p) }
+        HStack(spacing: 10) {
+            ModeCard(title: "Story Mode", symbol: "book.fill", subtitle: "Play the campaign", selected: s.mode == 1) { s.mode = 1 }
+            ModeCard(title: "Sandbox", symbol: "map.fill", subtitle: "Free roam", selected: s.mode == 2) { s.mode = 2 }
+        }
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                row("Graphics") {
+                    Picker("", selection: $s.preset) { ForEach(Preset.allCases, id: \.self) { p in Text(p.title).tag(p) } }
+                        .labelsHidden().frame(width: 150)
                 }
                 if s.preset != .custom {
-                    Text(s.preset.summary).font(.caption).foregroundStyle(.secondary)
+                    Text(s.preset.summary).font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 8)
+                } else {
+                    rule
+                    row("Resolution") { Picker("", selection: $s.scale) { Text("50 %").tag(0.5); Text("75 %").tag(0.75); Text("100 %").tag(1.0) }.labelsHidden().frame(width: 150) }
+                    rule
+                    row("Textures") { Picker("", selection: $s.textures) { Text("Normal").tag(0); Text("High").tag(1); Text("Very High").tag(2) }.labelsHidden().frame(width: 150) }
+                    rule
+                    row("Frame limit") { Picker("", selection: $s.fps) { Text("30 fps").tag(30); Text("60 fps").tag(60); Text("Uncapped").tag(0) }.labelsHidden().frame(width: 150) }
                 }
-                if s.preset == .custom {
-                Picker("Resolution", selection: $s.scale) {
-                    Text("50 % (fastest)").tag(0.5)
-                    Text("75 %").tag(0.75)
-                    Text("100 % (sharpest)").tag(1.0)
+                rule
+                row("Mouse sensitivity") {
+                    Slider(value: $s.mouse, in: 0.5...6, step: 0.5).frame(width: 120)
+                    Text(String(format: "%.1f×", s.mouse)).monospacedDigit().font(.system(size: 12)).frame(width: 36, alignment: .trailing)
                 }
-                Picker("Textures", selection: $s.textures) {
-                    Text("Normal").tag(0)
-                    Text("High").tag(1)
-                    Text("Very High").tag(2)
-                }
-                Picker("Frame limit", selection: $s.fps) {
-                    Text("30 fps (cooler)").tag(30)
-                    Text("60 fps").tag(60)
-                    Text("Uncapped").tag(0)
-                }
-                }
-                HStack {
-                    Text("Mouse sensitivity")
-                    Slider(value: $s.mouse, in: 0.5...6, step: 0.5)
-                    Text(String(format: "%.1f×", s.mouse)).monospacedDigit().frame(width: 40, alignment: .trailing)
-                }
-                Toggle("Fullscreen", isOn: $s.fullscreen)
-                Toggle("Mute audio", isOn: $s.mute)
-                Section("Multiplayer") {
-                    Toggle("Play with friends", isOn: $s.multiplayer)
-                    if s.multiplayer {
+                rule
+                row("Fullscreen") { Toggle("", isOn: $s.fullscreen).labelsHidden().toggleStyle(.switch) }
+                rule
+                row("Mute audio") { Toggle("", isOn: $s.mute).labelsHidden().toggleStyle(.switch) }
+                rule
+                row("Mod menu  (press ` in game)") { Toggle("", isOn: $s.modMenu).labelsHidden().toggleStyle(.switch) }
+                rule
+                row("Multiplayer") { Toggle("", isOn: $s.multiplayer).labelsHidden().toggleStyle(.switch) }
+                if s.multiplayer {
+                    VStack(alignment: .leading, spacing: 8) {
                         TextField("Your name", text: $s.name)
-                        Picker("Session", selection: $s.host) {
-                            Text("Host").tag(true)
-                            Text("Join").tag(false)
-                        }
-                        .pickerStyle(.segmented)
+                        Picker("", selection: $s.host) { Text("Host").tag(true); Text("Join").tag(false) }.pickerStyle(.segmented).labelsHidden()
                         if s.host {
-                            Text("Friends join with: \(localIPs().joined(separator: " or "))")
-                                .font(.callout).textSelection(.enabled)
-                            Text("Over the internet, forward UDP port 47520 to this Mac.")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Friends join with: \(localIPs().joined(separator: " or "))").font(.system(size: 11)).textSelection(.enabled)
+                            Text("Over the internet, forward UDP port 47520 to this Mac.").font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
                         } else {
                             TextField("Host address", text: $s.server, prompt: Text("192.168.1.20"))
                         }
                     }
+                    .padding(.horizontal, 14).padding(.bottom, 10)
                 }
+                rule
+                saveView.padding(.horizontal, 14).padding(.vertical, 9)
             }
-            .formStyle(.grouped)
-            .scrollDisabled(true)
-            .fixedSize(horizontal: false, vertical: true)
-            if let error = error ?? compiler.error { Text(error).foregroundStyle(.red).font(.callout) }
-            Button(action: play) {
-                Text("Play").font(.title3.weight(.semibold)).frame(maxWidth: .infinity)
-            }
-            .controlSize(.large)
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            Text("In game: Cmd+F fullscreen · Cmd+any key releases the mouse · Cmd+Q quits")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("The first start compiles the game for this Mac (about a minute).")
-                .font(.caption).foregroundStyle(.secondary)
-            saveView
-            Button("Import other game data…") { importer.choose() }
-                .buttonStyle(.link).font(.caption)
+        }
+        .glass()
+        .frame(height: 335)
+        if let error = error ?? compiler.error { Text(error).foregroundStyle(.red).font(.callout) }
+        primaryButton("PLAY", action: play).keyboardShortcut(.defaultAction)
+        HStack {
+            Text("Cmd+F fullscreen · Cmd+any key frees the mouse · Cmd+Q quits").font(.system(size: 10)).foregroundStyle(.white.opacity(0.45)).fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("IMPORT OTHER GAME DATA…") { importer.choose() }.buttonStyle(.plain).font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(accent)
         }
     }
 
@@ -394,15 +569,14 @@ struct LauncherView: View {
                 HStack {
                     Button("Import save…") { save.choose() }
                     if let st = save.status {
-                        Text(st).font(.caption).foregroundStyle(save.statusIsError ? Color.red : Color.secondary)
+                        Text(st).font(.caption).foregroundStyle(save.statusIsError ? Color.red : Color.white.opacity(0.55))
                     }
                 }
-                Text("Your current save is kept in the saves/save-backups folder.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("Your current save is kept in the saves/save-backups folder.").font(.caption).foregroundStyle(.white.opacity(0.55))
             }
             .padding(.top, 4)
         } label: {
-            Text("Load custom save").font(.callout)
+            Text("LOAD CUSTOM SAVE").font(.system(size: 11, weight: .bold)).tracking(1.2)
         }
     }
 
@@ -441,9 +615,10 @@ func localIPs() -> [String] {
 }
 
 @main
-struct MuguetLauncher: App {
+struct V4MacLauncher: App {
     var body: some Scene {
-        WindowGroup("Muguet") { LauncherView() }
+        WindowGroup("V4Mac") { LauncherView() }
             .windowResizability(.contentSize)
+            .windowStyle(.hiddenTitleBar)
     }
 }

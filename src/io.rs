@@ -17,15 +17,65 @@ pub fn data_dir() -> PathBuf {
     PathBuf::from(std::env::var("MUGUET_DATA").unwrap_or_default())
 }
 
-fn manifest_files() -> Vec<(String, u64)> {
-    let text = std::fs::read_to_string(data_dir().join("manifest.json")).expect("manifest.json");
-    let v: serde_json::Value = serde_json::from_str(&text).expect("manifest json");
-    v["files"]
-        .as_array()
-        .expect("files")
-        .iter()
-        .map(|f| (f[0].as_str().unwrap_or("").to_string(), f[1].as_u64().unwrap_or(0)))
-        .collect()
+pub struct Merged {
+    pub json: Vec<u8>,
+    pub files: Vec<(String, u64, PathBuf)>,
+}
+
+fn walk(dir: &std::path::Path, rel: &str, out: &mut Vec<(String, PathBuf, u64)>) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') { continue; }
+        let r = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+        let Ok(md) = e.metadata() else { continue };
+        if md.is_dir() { walk(&e.path(), &r, out); } else if md.is_file() { out.push((r, e.path(), md.len())); }
+    }
+}
+
+/// The game's file list with mods applied: every file under `<support>/mods/<ModName>/` replaces
+/// the game file at the same path (case-insensitive), or is added if the game has no such file.
+/// Mods are applied in alphabetical order, so later ones win.
+pub fn merged() -> &'static Merged {
+    static M: std::sync::LazyLock<Merged> = std::sync::LazyLock::new(|| {
+        let text = std::fs::read_to_string(data_dir().join("manifest.json")).expect("manifest.json");
+        let mut v: serde_json::Value = serde_json::from_str(&text).expect("manifest json");
+        let root = data_dir();
+        let arr = v["files"].as_array_mut().expect("files");
+        let mut files: Vec<(String, u64, PathBuf)> = arr.iter().map(|f| {
+            let p = f[0].as_str().unwrap_or("").to_string();
+            let full = root.join(&p);
+            (p, f[1].as_u64().unwrap_or(0), full)
+        }).collect();
+        let mods = crate::config::mods_dir();
+        let mut mod_dirs: Vec<_> = std::fs::read_dir(&mods).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).collect();
+        mod_dirs.sort_by_key(|e| e.file_name());
+        let mut index: HashMap<String, usize> = files.iter().enumerate().map(|(k, f)| (f.0.to_lowercase(), k)).collect();
+        for m in mod_dirs {
+            let mname = m.file_name().to_string_lossy().into_owned();
+            if mname.starts_with('.') { continue; }
+            let mut found = Vec::new();
+            walk(&m.path(), "", &mut found);
+            for (rel, full, size) in found {
+                match index.get(&rel.to_lowercase()) {
+                    Some(&k) => { files[k].1 = size; files[k].2 = full; eprintln!("[mods] {mname}: replaces {rel}"); }
+                    None => {
+                        index.insert(rel.to_lowercase(), files.len());
+                        files.push((rel.clone(), size, full));
+                        eprintln!("[mods] {mname}: adds {rel}");
+                    }
+                }
+            }
+        }
+        let list: Vec<serde_json::Value> = files.iter().map(|(p, s, _)| serde_json::json!([p, s, 0])).collect();
+        // keep original mtimes for untouched entries
+        let orig: HashMap<String, serde_json::Value> = arr.iter().map(|f| (f[0].as_str().unwrap_or("").to_string(), f[2].clone())).collect();
+        let list: Vec<serde_json::Value> = list.into_iter().map(|mut e| { if let Some(t) = orig.get(e[0].as_str().unwrap_or("")) { e[2] = t.clone(); } e }).collect();
+        v["files"] = serde_json::Value::Array(list);
+        Merged { json: serde_json::to_vec(&v).expect("manifest"), files }
+    });
+    &M
 }
 
 fn atomic_i32(mem: &SharedMemory, addr: u64) -> &AtomicI32 {
@@ -47,8 +97,7 @@ pub fn start(mem: &SharedMemory, table: u64) {
 }
 
 fn serve_loop(mem: SharedMemory, table: u64) {
-    let files = manifest_files();
-    let root = data_dir();
+    let files = &merged().files;
     let mut handles: HashMap<i32, File> = HashMap::new();
     let mut served: u64 = 0;
     let mut bytes: u64 = 0;
@@ -67,7 +116,7 @@ fn serve_loop(mem: SharedMemory, table: u64) {
             let mut len = word(6);
             let result: i64 = match files.get(id as usize) {
                 None => -1,
-                Some((path, size)) => {
+                Some((path, size, full)) => {
                     if off >= *size {
                         0
                     } else {
@@ -75,7 +124,7 @@ fn serve_loop(mem: SharedMemory, table: u64) {
 
                         if !handles.contains_key(&id) {
                             if handles.len() >= MAX_OPEN { handles.clear(); }
-                            match File::open(root.join(path)) {
+                            match File::open(full) {
                                 Ok(f) => { handles.insert(id, f); }
                                 Err(e) => eprintln!("[io] open {path}: {e}"),
                             }

@@ -259,7 +259,7 @@ struct LauncherView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 16) {
-                Text("Muguet").font(.largeTitle.weight(.bold))
+                Text("V4Mac").font(.largeTitle.weight(.bold))
                 if !muguet_has_game_code() {
                     Text("This build has no game code: build it with ./make-ios.sh <game.zip>.")
                         .foregroundStyle(.red).font(.callout).multilineTextAlignment(.center)
@@ -371,7 +371,7 @@ struct LauncherView: View {
                 ForEach(importer.local, id: \.self) { url in
                     Button("Import \(url.lastPathComponent)") { importer.run(url) }
                 }
-                Text("If the picker doesn't work, move the zip to Files → On My iPhone → Muguet and it will show up here.")
+                Text("If the picker doesn't work, move the zip to Files → On My iPhone → V4Mac and it will show up here.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let e = importer.error { Text(e).foregroundStyle(.red).font(.callout).multilineTextAlignment(.center) }

@@ -127,6 +127,7 @@ fn start_menu_key(code: &str) {
 }
 
 pub fn key(winit_name: &str, pressed: bool, repeat: bool, text: Option<&str>, ctrl_or_cmd: bool) {
+    if pressed && crate::mp::menu_open() { return; }
     let code = dom_code(winit_name);
     if pressed && !repeat { start_menu_key(code); }
 

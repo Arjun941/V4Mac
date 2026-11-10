@@ -32,7 +32,25 @@ fn support_dir() -> PathBuf {
     if cfg!(target_os = "ios") {
         return PathBuf::from(home).join("Documents");
     }
-    PathBuf::from(home).join("Library/Application Support/Muguet")
+    let new = PathBuf::from(&home).join("Library/Application Support/V4Mac");
+    // Carry an existing install over from the pre-rename "Muguet" folder.
+    let old = PathBuf::from(&home).join("Library/Application Support/Muguet");
+    if !new.exists() && old.exists() {
+        if std::fs::rename(&old, &new).is_ok() {
+            let _ = std::os::unix::fs::symlink(&new, &old); // keep older builds working
+        }
+    }
+    new
+}
+
+pub fn mods_dir() -> PathBuf {
+    let d = support_dir().join("mods");
+    let _ = std::fs::create_dir_all(&d);
+    let readme = d.join("README.txt");
+    if !readme.exists() {
+        let _ = std::fs::write(readme, "Put each mod in its own folder here: mods/<ModName>/<path as in the game's data folder>.\nExample: mods/FasterAI/common/data/ai/vehicleaihandlinginfo.meta\nFiles replace the game's file at the same path (or are added if new). Whole files only: to change something inside an .rpf archive, replace the whole .rpf. Restart the game after changes.\n");
+    }
+    d
 }
 
 pub fn game_dir() -> PathBuf {
@@ -76,7 +94,7 @@ fn redirect_logs_if_detached() {
         return;
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let path = PathBuf::from(home).join("Library/Logs/Muguet.log");
+    let path = PathBuf::from(home).join("Library/Logs/V4Mac.log");
     if let Ok(f) = std::fs::File::create(&path) {
         use std::os::fd::IntoRawFd;
         let fd = f.into_raw_fd();
@@ -116,7 +134,7 @@ fn locate() -> anyhow::Result<PathBuf> {
     Ok(build)
 }
 
-const SETTING_VARS: &[&str] = &["MUGUET_SCALE", "MUGUET_MOUSE_SENS", "MUGUET_TOUCH_SENS", "MUGUET_RES", "MUGUET_FULLSCREEN", "MUGUET_MUTE", "MUGUET_HOST", "MUGUET_SERVER", "MUGUET_NAME", "MUGUET_SHOW_FPS"];
+const SETTING_VARS: &[&str] = &["MUGUET_SCALE", "MUGUET_MOUSE_SENS", "MUGUET_TOUCH_SENS", "MUGUET_RES", "MUGUET_FULLSCREEN", "MUGUET_MUTE", "MUGUET_HOST", "MUGUET_SERVER", "MUGUET_NAME", "MUGUET_SHOW_FPS", "MUGUET_MODMENU"];
 
 #[cfg(target_os = "ios")]
 pub fn reload() -> Vec<String> {
@@ -143,6 +161,7 @@ fn settings(cfg_path: &Path) -> Vec<String> {
     if let Some(r) = cfg.get("resolution").and_then(|v| v.as_str()) { set_default("MUGUET_RES", r); }
     if flag("fullscreen") { set_default("MUGUET_FULLSCREEN", "1"); }
     if flag("mute") { set_default("MUGUET_MUTE", "1"); }
+    if cfg.get("mod_menu").and_then(|v| v.as_bool()) == Some(false) { set_default("MUGUET_MODMENU", "0"); }
     if flag("show_fps") { set_default("MUGUET_SHOW_FPS", "1"); }
 
     let text = |k: &str| cfg.get(k).and_then(|v| v.as_str()).map(str::trim).filter(|v| !v.is_empty());

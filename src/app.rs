@@ -10,8 +10,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{ModifiersState, PhysicalKey};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
-const TITLE: &str = "Muguet";
-const PICK_TITLE: &str = "Muguet — loading: press Enter for Story Mode, or Space then 5 for Sandbox";
+const TITLE: &str = "V4Mac";
+const PICK_TITLE: &str = "V4Mac — loading: press Enter for Story Mode, or Space then 5 for Sandbox";
 
 struct App {
     mode_chosen: bool,

@@ -205,7 +205,7 @@ fn main() -> Result<()> {
         Ok(s) => s,
         Err(e) => {
             eprintln!("[config] {e:#}");
-            alert("Muguet", &format!("{e:#}"));
+            alert("V4Mac", &format!("{e:#}"));
             std::process::exit(1);
         }
     };
@@ -535,7 +535,7 @@ fn run_pthread(rt: &Arc<Runtime>, ptr: u64, start_routine: u64, arg: u64) -> Res
 fn stopped() {
     if !host::engine_stopped() || cfg!(target_os = "ios") { return; }
     if let Some(reason) = host::stop_reason() {
-        alert("Muguet stopped", &format!("The game hit an error and can't continue:\n\n{reason}"));
+        alert("V4Mac stopped", &format!("The game hit an error and can't continue:\n\n{reason}"));
     }
 }
 

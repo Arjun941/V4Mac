@@ -10,9 +10,21 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use wasmtime::{Caller, Val};
 
+#[path = "menu.rs"]
+mod menu;
+pub use menu::is_open as menu_open;
+
 #[cfg_attr(not(feature = "jit"), allow(dead_code))]
 pub const COMMANDS: &[(&str, &str)] = &[
     ("PlayerPedId", "player_commands::CommandPlayerPedId()"),
+    ("SetPlayerInvincible", "player_commands::CommandSetPlayerInvincible(int, bool)"),
+    ("AlterWantedLevel", "player_commands::CommandAlterWantedLevel(int, int, bool)"),
+    ("ApplyWantedLevelChangeNow", "player_commands::CommandApplyWantedLevelChangeNow(int, bool)"),
+    ("ClearWantedLevel", "player_commands::CommandClearWantedLevel(int)"),
+    ("SetVehicleForwardSpeed", "vehicle_commands::CommandSetVehicleForwardSpeed(int, float)"),
+    ("SetVehicleOnGroundProperly", "vehicle_commands::CommandSetVehicleOnGroundProperly(int, float)"),
+    ("SetVehicleStrong", "vehicle_commands::CommandSetVehicleStrong(int, bool)"),
+    ("MarkModelAsNoLongerNeeded", "streaming_commands::CommandMarkModelAsNoLongerNeeded(int)"),
     ("IsPauseMenuActive", "hud_commands::CommandIsPauseMenuActive()"),
     ("SetControlValueNextFrame", "pad_commands::CommandSetControlValueNextFrame(int, int, float)"),
     ("GetVehicleClass", "vehicle_commands::CommandGetVehicleClass(int)"),
@@ -423,6 +435,7 @@ pub fn txd_loaded(name: u64, answer: i64) -> i64 {
 static TYPED: Mutex<String> = Mutex::new(String::new());
 
 pub fn key_pressed(code: &str) {
+    menu::key(code);
     if code == "KeyH" {
         WANT_ENTER.store(true, Ordering::Relaxed);
     }
@@ -951,6 +964,7 @@ pub fn script_tick(caller: &mut Caller<'_, HostState>, thread: u64, tls: u64) ->
                 *horn_at = Some(Instant::now());
             }
         }
+        menu::tick(&mut c);
         if let Some(net) = net {
             frame(&mut c, game, net);
         }

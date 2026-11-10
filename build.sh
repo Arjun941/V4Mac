@@ -6,16 +6,16 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo /)"
 if [ ! -f "$HERE/make-ios.sh" ]; then
-  HERE=/tmp/muguet
-  printf '\nDownloading Muguet into %s\n' "$HERE"
+  HERE=/tmp/v4mac
+  printf '\nDownloading V4Mac into %s\n' "$HERE"
   mkdir -p "$HERE"
-  curl -fsSL https://github.com/c22dev/muguet/archive/refs/heads/main.tar.gz | tar -xz -C "$HERE" --strip-components 1
+  curl -fsSL https://github.com/Arjun941/V4Mac/archive/refs/heads/v4mac.tar.gz | tar -xz -C "$HERE" --strip-components 1
   exec /bin/bash "$HERE/build.sh"
 fi
 cd "$HERE"
 
 TOOLCHAIN=1.98.1
-OUT="$HOME/Downloads/muguetOutput"
+OUT="$HOME/Downloads/V4MacOutput"
 SAVED=build/.choices
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -69,7 +69,7 @@ explain() {
   elif grep -E "maximum number of apps|App ID limit" "$log" >/dev/null; then
     hint="Free Apple IDs can only have a few sideloaded apps at once. Delete one from your device, wait a bit, then run this again."
   elif grep -E "Failed to register bundle identifier|is not available|cannot be registered" "$log" >/dev/null; then
-    hint="That app identifier is already taken. Run this again with your own one, like: BUNDLE_ID=com.yourname.muguet ./build.sh"
+    hint="That app identifier is already taken. Run this again with your own one, like: BUNDLE_ID=com.yourname.v4mac ./build.sh"
   elif grep -E "No space left on device" "$log" >/dev/null; then
     hint="Your Mac ran out of disk space. Free up at least 15 GB, then run this again."
   elif grep -iE "device is locked|passcode" "$log" >/dev/null; then
@@ -86,8 +86,8 @@ explain() {
 }
 remember() { mkdir -p build; echo "LAST_ZIP=$(printf '%q' "$ZIP")" > "$SAVED"; }
 
-[ "$(uname -s)" = Darwin ] || fail "Muguet builds on macOS only."
-[ "$(uname -m)" = arm64 ] || fail "Muguet needs an Apple Silicon Mac (M1 or newer)."
+[ "$(uname -s)" = Darwin ] || fail "V4Mac builds on macOS only."
+[ "$(uname -m)" = arm64 ] || fail "V4Mac needs an Apple Silicon Mac (M1 or newer)."
 
 bold "Checking Xcode"
 if ! xcodebuild -version >/dev/null 2>&1; then
@@ -104,7 +104,7 @@ if ! xcodebuild -license check >/dev/null 2>&1; then
 fi
 xcodebuild -version | head -1
 
-pick "What do you want to build?" "Muguet for this Mac" "Muguet for iPhone / iPad"
+pick "What do you want to build?" "V4Mac for this Mac" "V4Mac for iPhone / iPad"
 PLATFORM="$REPLY"
 
 bold "Checking Homebrew"
@@ -130,14 +130,14 @@ cargo --version
 if [ "$PLATFORM" = 1 ]; then
   bold "Downloading Rust dependencies"
   cargo fetch --locked
-  bold "Building Muguet (a few minutes the first time)"
+  bold "Building V4Mac (a few minutes the first time)"
   run ./make-app.sh
   mkdir -p "$OUT"
-  rm -rf "$OUT/Muguet.app"
-  ditto build/Muguet.app "$OUT/Muguet.app"
-  bold "Done: $OUT/Muguet.app"
+  rm -rf "$OUT/V4Mac.app"
+  ditto build/V4Mac.app "$OUT/V4Mac.app"
+  bold "Done: $OUT/V4Mac.app"
   echo "Showing it in Finder: open it, then import your game .zip."
-  open -R "$OUT/Muguet.app"
+  open -R "$OUT/V4Mac.app"
   exit 0
 fi
 
@@ -190,7 +190,7 @@ if [ "$OUTPUT" = 2 ] && [ -z "$TEAM" ]; then
     while IFS=$'\t' read -r _ free name; do
       NAMES+=("$name$([ "$free" = 1 ] && echo " (free)")")
     done <<< "$TEAMS"
-    pick "Which account should sign Muguet?" "${NAMES[@]}"
+    pick "Which account should sign V4Mac?" "${NAMES[@]}"
     LINE="$(printf '%s\n' "$TEAMS" | sed -n "${REPLY}p")"
   else
     LINE="$TEAMS"
@@ -200,7 +200,7 @@ if [ "$OUTPUT" = 2 ] && [ -z "$TEAM" ]; then
   echo "Signing with $(printf '%s' "$LINE" | cut -f3)$([ "$FREE" = 1 ] && echo "'s free account" || echo "'s developer account")."
 fi
 
-BUNDLE="${BUNDLE_ID:-com.$(id -un | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]').muguet}"
+BUNDLE="${BUNDLE_ID:-com.$(id -un | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]').v4mac}"
 
 FREE_KB="$(df -k . | awk 'NR==2 {print $4}')"
 [ "$FREE_KB" -gt $((15 * 1024 * 1024)) ] || echo "Warning: less than 15 GB free on this disk, the build may run out of space."
@@ -214,16 +214,16 @@ if [ "$OUTPUT" = 2 ]; then
   done
 fi
 
-bold "Building Muguet for iOS (10-30 minutes the first time)"
+bold "Building V4Mac for iOS (10-30 minutes the first time)"
 if [ "$OUTPUT" = 1 ]; then
   BUNDLE_ID="$BUNDLE" run ./make-ios.sh "$ZIP" --ipa
   mkdir -p "$OUT"
-  cp build/Muguet.ipa "$OUT/Muguet.ipa"
-  bold "Done: $OUT/Muguet.ipa"
+  cp build/V4Mac.ipa "$OUT/V4Mac.ipa"
+  bold "Done: $OUT/V4Mac.ipa"
   echo "Showing it in Finder: open it with AltStore."
-  open -R "$OUT/Muguet.ipa"
+  open -R "$OUT/V4Mac.ipa"
 else
   TEAM="$TEAM" BUNDLE_ID="$BUNDLE" FREE="$FREE" run ./make-ios.sh "$ZIP" --install
-  bold "Done: Muguet is on your device"
+  bold "Done: V4Mac is on your device"
   echo "If it says \"Untrusted Developer\": Settings > General > VPN & Device Management, tap your account, Trust."
 fi

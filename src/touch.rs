@@ -290,7 +290,7 @@ fn stop_tick(o: &Overlay) {
         let _: () = msg_send![&*l, setBackgroundColor: &*color(0.0, 0.8)];
         let font: Retained<AnyObject> = msg_send![class!(UIFont), systemFontOfSize: 17.0f64];
         let _: () = msg_send![&*l, setFont: &*font];
-        set_text(&l, &format!("The game hit an error and can't continue.\n\n{reason}\n\nClose Muguet from the app switcher and open it again."));
+        set_text(&l, &format!("The game hit an error and can't continue.\n\n{reason}\n\nClose V4Mac from the app switcher and open it again."));
         let _: () = msg_send![&*parent, addSubview: &*l];
     }
 }
